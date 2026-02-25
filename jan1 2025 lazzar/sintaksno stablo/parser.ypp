@@ -1,0 +1,103 @@
+%{
+    #include <iostream>
+    #include <string>
+    #include <map>
+    #include "Sintaksno.cpp"
+
+    #define YYDEBUG 1
+
+    extern int yylex();
+
+    void yyerror(const std::string&msg){
+        std::cerr<<msg<<'\n';
+        exit(EXIT_FAILURE);
+    }
+
+    std::map<char,int> mapa;
+    ProgramCvor*koren;
+%}
+
+%union {
+    char c;
+    int d;
+    ASTCvor* a;
+}
+
+%type<a> program naredba izraz
+
+%token<c> ID_T
+%token TRUE_T FALSE_T KON_T DIS_T EKV_T IMP_T DODELA_T 
+
+%left EKV_T
+%left IMP_T
+%left DIS_T
+%left KON_T
+%right '!'
+
+%%
+
+program: 
+program '\n' naredba{
+    $$ = $1;
+    dynamic_cast<ProgramCvor*>$$->dodaj($3);
+}
+| naredba {
+    koren=new ProgramCvor();
+    koren->dodaj($1);
+    $$ = koren;
+}
+;
+
+naredba:
+izraz
+{
+    $$ = new IzrazCvor($1);
+}
+| ID_T DODELA_T izraz
+{
+    $$ = new DodelaCvor(new IdCvor($1),$3);
+}
+
+izraz:
+ID_T
+{
+    $$ = new IdCvor($1);
+}
+|izraz KON_T izraz
+{
+    $$ = new KonCvor($1,$3);
+} 
+|izraz DIS_T izraz{
+    $$ = new DisCvor($1,$3);
+}
+|izraz IMP_T izraz {
+    $$ = new ImpCvor($1,$3);
+}
+|izraz EKV_T izraz{
+    $$ = new EkvCvor($1,$3);
+}
+| '(' izraz ')' {
+    $$ = new ParCvor($2);
+}
+| '!' izraz {
+    $$ = new NegCvor($2);
+}
+| TRUE_T {
+    $$ = new TrueCvor();
+}
+| FALSE_T {
+    $$ = new FalseCvor();
+}
+;
+
+%%
+
+int main()
+{
+    //yydebug = 1;
+    yyparse();
+    koren->interpretiraj(mapa);
+    //koren->ispis();
+
+    return 0;
+}
