@@ -1,0 +1,112 @@
+%{
+    #include <iostream>
+    #include <algorithm>
+    #include <cstdlib>
+    #include <cstdio>
+
+    #include "SymbolTable.hpp"
+    #include "SyntaxTree.hpp"
+
+    extern int yylex();
+    extern FILE* yyin;
+
+    void yyerror(std::string s) {
+
+        std::cerr << "Greska: " << s << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    SymbolTable sTable;
+    SyntaxTreeNode* proot = NULL;
+%}
+
+%union {
+    std::string* s;
+    SyntaxTreeNode* stn;
+}
+
+%token START_T END_T OUT_T ERR_T IN_T SHR_T SHL_T STRING_T PRINT_T EQ_T NEQ_T IF_T ELSE_T
+%token<s> ID_T STRING_CONST_T
+
+%nonassoc EQ_T NEQ_T
+%left '+'
+%left '*'
+%right '~'
+%nonassoc IF_NO_ELSE
+%nonassoc ELSE_T
+
+%type<stn> izraz uslov naredba niz_naredbi
+
+%start program
+
+%%
+program: START_T ':' niz_naredbi END_T  {
+                                            proot = $3;
+                                            $3->Interpret(sTable);
+                                        }
+    ;
+niz_naredbi: niz_naredbi naredba    { 
+                                        SequenceNode* sn = dynamic_cast<SequenceNode*>($1);
+                                        if (sn == nullptr) {
+                                            yyerror("Pogresan tip");
+                                        }
+                                        sn->Add($2);
+                                        $$ = sn;
+                                    }
+    | naredba                       { 
+                                        SequenceNode* sn = new SequenceNode();
+                                        sn->Add($1);
+                                        $$ = sn;
+                                    }
+    ;
+naredba: STRING_T ID_T ';'          { $$ = new DeclarationNode(*$2); delete $2;}
+    | STRING_T ID_T '=' izraz ';'   { $$ = new DefinitionNode(*$2, $4); delete $2; }
+    | OUT_T SHL_T izraz ';'         { $$ = new OutputNode("out", $3); }
+    | ERR_T SHL_T izraz ';'         { $$ = new OutputNode("err", $3); }
+    | OUT_T SHL_T uslov ';'         { $$ = new OutputNode("out", $3); }
+    | ERR_T SHL_T uslov ';'         { $$ = new OutputNode("err", $3); }
+    | IN_T SHR_T ID_T ';'           { $$ = new InputNode(*$3); delete $3; }
+    | ID_T '=' izraz ';'            { $$ = new AssignmentNode(*$1, $3); delete $1;}
+    | PRINT_T ';'                   { $$ = new PrintAllNode(); }
+    | IF_T '(' uslov ')' '{' niz_naredbi '}' ';' %prec IF_NO_ELSE           { $$ = new IfNoElseNode($3, $6); }
+    | IF_T '(' uslov ')' '{' niz_naredbi '}' ELSE_T '{' niz_naredbi '}' ';' { $$ = new IfElseNode($3, $6,$10); }
+    ;
+uslov: izraz EQ_T izraz {   $$ = new BinaryNode("==", $1, $3); }
+    | izraz NEQ_T izraz {   $$ = new BinaryNode("!=", $1, $3); }
+    ;
+izraz: izraz '+' izraz  {   $$ = new BinaryNode("+", $1, $3); }
+    | izraz '*' izraz   {   $$ = new BinaryNode("*", $1, $3); }
+    | '~' izraz         {   $$ = new ReverseNode($2); }
+    | '(' izraz ')'     {   $$ = new GroupNode($2); }
+    | ID_T              {   $$ = new IdentifierNode(*$1); delete $1; }
+    | STRING_CONST_T    {   $$ = new ConstNode(*$1); delete $1; }
+    ;
+%%
+
+int main(int argc, char** argv) {
+
+    if (argc != 2)
+        yyerror("Nedostaje ulazni fajl");
+
+    yyin = fopen(argv[1], "r");
+    if (yyin == NULL)
+        yyerror("Otvaranje fajla nije uspelo");
+
+    if (yyparse() == 0) {
+
+        std::cout << "Sve ok" << std::endl;
+
+        std::cout << std::endl;
+        std::cout << (*proot) << std::endl;
+
+        delete proot;
+    }
+    else {
+
+        std::cout << "Greska" << std::endl;
+    }
+
+    fclose(yyin);
+
+    exit(EXIT_SUCCESS);
+}
