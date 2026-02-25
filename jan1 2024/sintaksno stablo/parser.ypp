@@ -1,0 +1,132 @@
+%{
+    #include <iostream>
+    #include <map>
+    #include <cstdlib>
+    #include <bitset>
+
+    using namespace std;
+
+    #include "sintaksno.cpp"
+
+    #define YYDEBUG 1
+
+    extern int yylex();
+
+    void yyerror(string s){
+        cerr << "Sintaksna greska: " << s << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    map<string, int> promenljive;
+    ASTCvor* koren = nullptr;
+%}
+
+%union {
+    string* ime;
+    int x;
+    char opt;
+    ASTCvor* a;
+}
+
+%token DEF PRINT SHL SHR EQ NEQ GEQ LEQ
+%token<ime> ID
+%token<x> BROJ
+%token<opt> OPT
+
+%type<a> izraz logicka_naredba naredba program
+
+%left EQ NEQ
+%left GEQ LEQ '<' '>'
+%left '|'
+%left '^'
+%left '&'
+%left SHL SHR
+%left '+' '-'
+%left '*' '/'
+%left '%'
+%right '~'
+%right UMINUS
+
+
+%start program
+
+%%
+
+program : program naredba                                       {
+                                                                    ProgramCvor* e = dynamic_cast<ProgramCvor*>($1);
+                                                                    e->dodaj($2);
+                                                                    $$ = e;
+                                                                    koren = $$;
+                                                                }
+        | naredba                                               {
+                                                                    ProgramCvor* e = new ProgramCvor();
+                                                                    e->dodaj($1);
+                                                                    $$ = e;
+                                                                    koren = $$;
+                                                                }
+        ;
+
+naredba : DEF ID ';'                                            {
+                                                                    $$ = new DodelaCvor(*$2, true);
+                                                                    delete $2; 
+                                                                }
+        | DEF ID '=' izraz ';'                                  {
+                                                                    $$ = new DodelaCvor($4, *$2, true);
+                                                                    delete $2;
+                                                                }
+        | ID '=' izraz ';'                                      {
+                                                                    $$ = new DodelaCvor($3, *$1, false);
+                                                                    delete $1;
+                                                                }
+        | PRINT '(' '"' '%' OPT '"' ',' izraz ')' ';'           {
+                                                                    $$ = new PrintCvor($8, $5);
+                                                                }
+        | logicka_naredba ';'                                   {
+                                                                    $$ = $1;
+                                                                }
+        ;
+        
+logicka_naredba : izraz '<' izraz               { $$ = new LogickeOpCvor($1, "<", $3);  }
+                | izraz '>' izraz               { $$ = new LogickeOpCvor($1, ">", $3);  }
+                | izraz EQ izraz                { $$ = new LogickeOpCvor($1, "==", $3);  }
+                | izraz NEQ izraz               { $$ = new LogickeOpCvor($1, "!=", $3);  }
+                | izraz GEQ izraz               { $$ = new LogickeOpCvor($1, ">=", $3);  }
+                | izraz LEQ izraz               { $$ = new LogickeOpCvor($1, "<=", $3);  }
+                ;
+
+izraz : izraz '+' izraz                                 { $$ = new BinarniOpCvor($1, "+", $3);  }
+      | izraz '-' izraz                                 { $$ = new BinarniOpCvor($1, "-", $3);  }
+      | izraz '*' izraz                                 { $$ = new BinarniOpCvor($1, "*", $3);  }
+      | izraz '/' izraz                                 { $$ = new BinarniOpCvor($1, "/", $3);  }
+      | izraz '%' izraz                                 { $$ = new BinarniOpCvor($1, "%", $3);  }
+      | izraz '&' izraz                                 { $$ = new BinarniOpCvor($1, "&", $3);  }
+      | izraz '|' izraz                                 { $$ = new BinarniOpCvor($1, "|", $3);  }
+      | izraz '^' izraz                                 { $$ = new BinarniOpCvor($1, "^", $3);  }
+      | '~' izraz                                       { $$ = new UnarniOpCvor($2, '~');       }
+      | izraz SHL izraz                                 { $$ = new BinarniOpCvor($1, "<<", $3); }
+      | izraz SHR izraz                                 { $$ = new BinarniOpCvor($1, ">>", $3); }
+      | '(' izraz ')'                                   { $$ = new ZagradeCvor($2);             }
+      | '-' izraz %prec UMINUS                          { $$ = new UnarniOpCvor($2, '-');       }
+      | BROJ                                            { $$ = new BrojCvor($1);                }
+      | ID                                              { 
+                                                            $$ = new IdCvor(*$1); delete $1;
+                                                        }
+      ;
+
+%%
+
+int main(){
+    //yydebug = 1;
+
+    if(yyparse() == 0){
+        cout << "Sve ok" << endl;
+    } else {
+        cout << "Greska" << endl;
+    }
+
+    koren->interpretiraj(promenljive);
+    koren->show();
+    delete koren;
+
+    exit(EXIT_SUCCESS);
+}
